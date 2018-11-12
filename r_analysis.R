@@ -1,3 +1,7 @@
+library(causaleffect)
+#library(pcalg)
+library(mediation)
+library(igraph)
 library(plyr)
 library(tidyverse)
 library(purrrlyr)
@@ -14,24 +18,25 @@ cox_data <- read.csv("./cox-parsed.csv") %>%
   as_tibble() %>%
   select(-ends_with(".1"))
 
-#library(causaleffect)
-library(pcalg)
-library(mediation)
-library(igraph)
+#########
 
 g <- graph_from_literal(S:A:R -+ NP:CR, NP -+ CR, S:A:R:NP:CR -+ SCP)
 
 causal.effect(y = "SCP", x = "R", G = g)
 
-cpss <- compas_data %>% select(id = id, S = sex, A = age_cat, R = race, 
-                               NP = priors_count, CR = c_charge_degree, SCP = decile_score) %>%
+cmps <- compas_data %>% 
+  select(id = id, S = sex, A = age_cat, R = race, 
+         NP = priors_count, CR = c_charge_degree, SCP = decile_score) %>%
   mutate(SCP = as.factor(SCP))
 
-logical_gaps <- cpss %>%
+
+
+#######################
+logical_gaps <- cmps %>%
   select(-id, -NP) %>% {
     matrix(FALSE, nrow = length(colnames(.)), ncol = length(colnames(.)))
   } %>% {
-    colnames(.) <- colnames(select(cpss, -id, -NP))
+    colnames(.) <- colnames(select(cmps, -id, -NP))
     rownames(.) <- colnames(.)
     .
   }
@@ -40,7 +45,7 @@ logical_gaps["S", "A"] <- logical_gaps["A", "S"] <- T
 logical_gaps["A", "R"] <- logical_gaps["R", "A"] <- T
 logical_gaps["S", "R"] <- logical_gaps["R", "S"] <- T
 
-skel.cpss <- cpss %>%
+skel.cmps <- cmps %>%
   select(-id, -NP) %>% {
   skeleton(list(dm = mutate_all(., function(a) as.integer(a) - 1), nlev = as.numeric(dmap(., nlevels)),
                 adaptDF = FALSE), 
@@ -49,7 +54,7 @@ skel.cpss <- cpss %>%
            fixedGaps = logical_gaps)
   }
 
-plot(skel.cpss, main = "Estimated CPDAG")
+plot(skel.cmps, main = "Estimated CPDAG")
 
 ###
 # Demo pcalg
