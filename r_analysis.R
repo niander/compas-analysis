@@ -1,10 +1,11 @@
-library(causaleffect)
-#library(pcalg)
-library(mediation)
-library(igraph)
-library(plyr)
-library(tidyverse)
-library(purrrlyr)
+#p_load(causaleffect)
+
+#p_load(mediation)
+#p_load(igraph)
+
+p_load(plyr)
+p_load(tidyverse)
+p_load(purrrlyr)
 
 compas_data <- read.csv("./compas-scores-two-years.csv") %>%
   as_tibble() %>%
@@ -18,8 +19,33 @@ cox_data <- read.csv("./cox-parsed.csv") %>%
   as_tibble() %>%
   select(-ends_with(".1"))
 
-#########
+##################
+p_load(gRain)
+p_load(bnlearn)
 
+
+dag <- model2network("[S][A][R][NP|S:A:R][CR|S:A:R:NP][SCP|S:A:R:NP:CR]")
+
+cmps <- compas_data %>% 
+  select(id = id, S = sex, A = age_cat, R = race, 
+         NP = priors_count, CR = c_charge_degree, SCP = decile_score) %>%
+  mutate(NP = as.numeric(NP), SCP = as.factor(SCP >= 7))
+
+cmps$NP %>% hist()
+
+bn <- bn.fit(dag, select(cmps, -id) %>% discretize())
+
+gr.bn <- compile(as.grain(bn))
+
+gr.bn.white <- setEvidence(gr.bn, nodes = "R", states = "Caucasian")
+gr.bn.black <- setEvidence(gr.bn, nodes = "R", states = "African-American")
+
+E_y_xz <- querygrain(gr.bn.white, c("SCP", "NP", "CR"), "conditional")
+E_y_x1z <- querygrain(gr.bn.black, c("SCP", "NP", "CR"), "conditional")
+
+
+###################
+p_load(igraph)
 g <- graph_from_literal(S:A:R -+ NP:CR, NP -+ CR, S:A:R:NP:CR -+ SCP)
 
 causal.effect(y = "SCP", x = "R", G = g)
@@ -57,6 +83,7 @@ skel.cmps <- cmps %>%
 plot(skel.cmps, main = "Estimated CPDAG")
 
 ###
+#p_load(pcalg)
 # Demo pcalg
 data("gmG")
 suffStat <- list(C = cor(gmG8$x), n = nrow(gmG8$x))
