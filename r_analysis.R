@@ -5,6 +5,7 @@
 
 p_load(plyr)
 p_load(tidyverse)
+p_load(tidymodels)
 p_load(purrrlyr)
 
 compas_data <- read.csv("./compas-scores-two-years.csv") %>%
@@ -23,13 +24,12 @@ cox_data <- read.csv("./cox-parsed.csv") %>%
 p_load(gRain)
 p_load(bnlearn)
 
-
 dag <- model2network("[S][A][R][NP|S:A:R][CR|S:A:R:NP][SCP|S:A:R:NP:CR]")
 
 cmps <- compas_data %>% 
   select(id = id, S = sex, A = age_cat, R = race, 
          NP = priors_count, CR = c_charge_degree, SCP = decile_score) %>%
-  mutate(NP = as.numeric(NP), SCP = as.factor(SCP >= 7))
+  mutate(NP = as.numeric(NP), SCP = as.factor(SCP >= 5))
 
 cmps$NP %>% hist()
 
@@ -40,9 +40,33 @@ gr.bn <- compile(as.grain(bn))
 gr.bn.white <- setEvidence(gr.bn, nodes = "R", states = "Caucasian")
 gr.bn.black <- setEvidence(gr.bn, nodes = "R", states = "African-American")
 
-E_y_xz <- querygrain(gr.bn.white, c("SCP", "NP", "CR"), "conditional")
-E_y_x1z <- querygrain(gr.bn.black, c("SCP", "NP", "CR"), "conditional")
+E_y_xz <- querygrain(gr.bn.white, c("SCP", "NP", "CR"), "conditional") %>%
+  ar_slice(list(SCP = "TRUE"))
+E_y_x1z <- querygrain(gr.bn.black, c("SCP", "NP", "CR"), "conditional") %>%
+  ar_slice(list(SCP = "TRUE"))
+P_z_x1 <- querygrain(gr.bn.black, c("NP", "CR"), "joint")
+P_z_x <- querygrain(gr.bn.white, c("NP", "CR"), "joint")
 
+NDE_x1_x = sum((E_y_xz %a-% E_y_x1z) %a*% P_z_x1)
+NDE_x_x1 = sum((E_y_x1z %a-% E_y_xz) %a*% P_z_x)
+
+
+##################
+p_load(mediation)
+
+cmps.data <- select(cmps, -id) %>%
+  mutate(SCP = if_else(SCP == "TRUE", 1, 0)) %>%
+  filter(R %in% c("African-American", "Caucasian")) %>%
+  mutate(R = fct_drop(R))
+
+med.out <- mediations(list("cmps" = cmps.data), 
+                      treatment = c("R"), 
+                      mediators = c("NP"), 
+                      outcome = c("SCP"), 
+                      covariates = "S + A",
+                      families = c("gaussian", "binomial"))
+
+summary(med.out)
 
 ###################
 p_load(igraph)
