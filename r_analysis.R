@@ -1,11 +1,7 @@
 #p_load(causaleffect)
-
-#p_load(mediation)
-#p_load(igraph)
-
 p_load(plyr)
 p_load(tidyverse)
-p_load(tidymodels)
+#p_load(tidymodels)
 p_load(purrrlyr)
 
 compas_data <- read.csv("./compas-scores-two-years.csv") %>%
@@ -39,15 +35,15 @@ gr.bn <- compile(as.grain(bn))
 gr.bn.white <- setEvidence(gr.bn, nodes = "R", states = "Caucasian")
 gr.bn.black <- setEvidence(gr.bn, nodes = "R", states = "African-American")
 
-E_y_xz <- querygrain(gr.bn.white, c("SCP", "NP", "CR"), "conditional") %>%
+E_y_xz <- querygrain(gr.bn.white, c("SCP", "NP", "CR", "S", "A"), "conditional") %>%
   ar_slice(list(SCP = "TRUE"))
-E_y_x1z <- querygrain(gr.bn.black, c("SCP", "NP", "CR"), "conditional") %>%
+E_y_x1z <- querygrain(gr.bn.black, c("SCP", "NP", "CR", "S", "A"), "conditional") %>%
   ar_slice(list(SCP = "TRUE"))
-P_z_x1 <- querygrain(gr.bn.black, c("NP", "CR"), "joint")
-P_z_x <- querygrain(gr.bn.white, c("NP", "CR"), "joint")
+P_z_x1 <- querygrain(gr.bn.black, c("NP", "CR", "S", "A"), "joint")
+P_z_x <- querygrain(gr.bn.white, c("NP", "CR", "S", "A"), "joint")
 
-NDE_x1_x = sum((E_y_xz %a-% E_y_x1z) %a*% P_z_x1)
-NDE_x_x1 = sum((E_y_x1z %a-% E_y_xz) %a*% P_z_x)
+ADE_x1_x = sum((E_y_xz %a-% E_y_x1z) %a*% P_z_x1)
+ADE_x_x1 = sum((E_y_x1z %a-% E_y_xz) %a*% P_z_x)
 
 
 ##################
