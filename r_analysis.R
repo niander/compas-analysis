@@ -24,14 +24,13 @@ cox_data <- read.csv("./cox-parsed.csv") %>%
 p_load(gRain)
 p_load(bnlearn)
 
+
 dag <- model2network("[S][A][R][NP|S:A:R][CR|S:A:R:NP][SCP|S:A:R:NP:CR]")
 
 cmps <- compas_data %>% 
   select(id = id, S = sex, A = age_cat, R = race, 
          NP = priors_count, CR = c_charge_degree, SCP = decile_score) %>%
   mutate(NP = as.numeric(NP), SCP = as.factor(SCP >= 5))
-
-cmps$NP %>% hist()
 
 bn <- bn.fit(dag, select(cmps, -id) %>% discretize())
 
@@ -53,20 +52,47 @@ NDE_x_x1 = sum((E_y_x1z %a-% E_y_xz) %a*% P_z_x)
 
 ##################
 p_load(mediation)
+p_unload(MASS)
 
 cmps.data <- select(cmps, -id) %>%
   mutate(SCP = if_else(SCP == "TRUE", 1, 0)) %>%
   filter(R %in% c("African-American", "Caucasian")) %>%
   mutate(R = fct_drop(R))
 
+
+med.fit <- lm(NP ~ S + A + R, cmps.data)
+out.fit <- glm(SCP ~ S + A + CR + R * NP, cmps.data, family = binomial("probit"))
+med.out <- mediate(model.m = med.fit, model.y = out.fit, 
+                   treat = "R", outcome = "SCP", mediator = "NP",
+                   covariates = c("S", "A", "CR"),
+                   control.value = "Caucasian", treat.value = "African-American",
+                   boot = T, sims = 100)
+
+summary(med.out)
+plot(med.out)
+
+test.TMint(med.out, conf.level = .95)
+
 med.out <- mediations(list("cmps" = cmps.data), 
                       treatment = c("R"), 
-                      mediators = c("NP"), 
+                      mediators = c("NP", "CR"), 
                       outcome = c("SCP"), 
                       covariates = "S + A",
                       families = c("gaussian", "binomial"))
 
 summary(med.out)
+
+################
+model.m <- lm(job_seek ~ treat + depress1 + econ_hard + sex + age + occp + marital + 
+                nonwhite + educ + income, data = jobs)
+model.y <- lm(depress2 ~ treat + job_seek + depress1 + econ_hard + sex + age + 
+                occp + marital + nonwhite + educ + income, data = jobs)
+out.1 <- mediate(model.m, model.y, sims = 1000, boot = TRUE, treat = "treat", mediator = "job_seek")
+
+summary(out.1)
+
+#################
+p_load(mma)
 
 ###################
 p_load(igraph)
