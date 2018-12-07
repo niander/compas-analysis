@@ -26,32 +26,67 @@ dag <- model2network("[S][A][R][NP|S:A:R][CR|S:A:R:NP][SCP|S:A:R:NP:CR]")
 cmps <- compas_data %>% 
   select(id = id, S = sex, A = age_cat, R = race, 
          NP = priors_count, CR = c_charge_degree, SCP = decile_score) %>%
-  mutate(NP = as.numeric(NP), SCP = as.factor(SCP >= 5))
+  mutate(NP = as.numeric(NP), SCP = as.factor(SCP >= 5)) %>%
+  mutate(NP = select(., NP) %>% discretize() %>% pull(NP)) %>%
+  filter(R %in% c("Caucasian", "African-American")) %>%
+  mutate(R = fct_drop(R))
 
-bn <- bn.fit(dag, select(cmps, -id) %>% discretize())
+p_load(rsample)
 
-gr.bn <- compile(as.grain(bn))
+calc_stats <- function(cmps) {
+  bn <- bn.fit(dag, select(cmps, -id) %>% as.data.frame())
+  
+  gr.bn <- compile(as.grain(bn))
+  
+  gr.bn.white <- setEvidence(gr.bn, nodes = "R", states = "Caucasian")
+  gr.bn.black <- setEvidence(gr.bn, nodes = "R", states = "African-American")
+  
+  Ey_white <- querygrain(gr.bn.white, c("SCP", "NP", "CR", "S", "A"), "conditional") %>%
+    ar_slice(list(SCP = "TRUE"))
+  Pz1_white <- querygrain(gr.bn.white, c("CR", "NP", "S", "A"), "conditional")
+  Pz2_white <- querygrain(gr.bn.white, c("NP", "S", "A"), "conditional")
+  
+  Ey_black <- querygrain(gr.bn.black, c("SCP", "NP", "CR", "S", "A"), "conditional") %>%
+    ar_slice(list(SCP = "TRUE"))
+  Pz1_black <- querygrain(gr.bn.black, c("CR", "NP", "S", "A"), "conditional")
+  Pz2_black <- querygrain(gr.bn.black, c("NP", "S", "A"), "conditional")
+  
+  Pc <- querygrain(gr.bn, c("S", "A"), "joint")
+  
+  NDE_black = sum((Ey_white %a-% Ey_black) %a*% Pz1_black  %a*% Pz2_black %a*% Pc)
+  NDE_white = sum((Ey_black %a-% Ey_white) %a*% Pz1_white %a*% Pz2_white %a*% Pc)
+  
+  return(tibble(NDE_white, NDE_black))
+}
 
-gr.bn.white <- setEvidence(gr.bn, nodes = "R", states = "Caucasian")
-gr.bn.black <- setEvidence(gr.bn, nodes = "R", states = "African-American")
+boots <- bootstraps(cmps, times = 1000)
 
-E_y_xz <- querygrain(gr.bn.white, c("SCP", "NP", "CR", "S", "A"), "conditional") %>%
-  ar_slice(list(SCP = "TRUE"))
-P_z1_x <- querygrain(gr.bn.white, c("CR", "NP", "S", "A"), "conditional")
-P_z2_x <- querygrain(gr.bn.white, c("NP", "S", "A"), "conditional")
+boots_models <- boots %>%
+  mutate(model = map(splits, ~calc_stats(analysis(.x))))
 
-E_y_x1z <- querygrain(gr.bn.black, c("SCP", "NP", "CR", "S", "A"), "conditional") %>%
-  ar_slice(list(SCP = "TRUE"))
-P_z1_x1 <- querygrain(gr.bn.black, c("CR", "NP", "S", "A"), "conditional")
-P_z2_x1 <- querygrain(gr.bn.black, c("NP", "S", "A"), "conditional")
+boots_estimates <- boots_models %>%
+  unnest(model)
 
-P_c <- querygrain(gr.bn, c("S", "A"), "joint")
+sample_estimates <- calc_stats(cmps)
 
-ADE_x1_x = sum((E_y_xz %a-% E_y_x1z) %a*% P_z1_x1  %a*% P_z2_x1 %a*% P_c)
-ADE_x_x1 = sum((E_y_x1z %a-% E_y_xz) %a*% P_z_x)
+alpha <- .05
+boots_percentiles <- boots_estimates %>%
+  select(NDE_white, NDE_black) %>%
+  gather() %>% as_tibble() %>%
+  group_by(model) %>%
+  summarise(low = quantile(statistic, alpha / 2),
+            high = quantile(statistic, 1 - (alpha / 2)))
 
-#P_z_x1 <- querygrain(gr.bn.black, c("NP", "CR", "S", "A"), "joint")
-#P_z_x <- querygrain(gr.bn.white, c("NP", "CR", "S", "A"), "joint")
+plt.data <- boots_estimates %>%
+  gather(key = "effect", value = "estimate", NDE_white, NDE_black) %>%
+  as.tibble() %>%
+  mutate(sample_s = case_when(model == "NDE_white" ~ sample_estimates$NDE_white,
+                            model == "NDE_black" ~ sample_estimates$NDE_black))
+
+ggplot(plt.data, aes(statistic)) + 
+  geom_histogram() + 
+  facet_wrap(~ model, scales = "free") +
+  geom_vline(aes(xintercept = sample_s))
 
 ##################
 p_load(mediation)
