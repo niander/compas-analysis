@@ -37,14 +37,21 @@ gr.bn.black <- setEvidence(gr.bn, nodes = "R", states = "African-American")
 
 E_y_xz <- querygrain(gr.bn.white, c("SCP", "NP", "CR", "S", "A"), "conditional") %>%
   ar_slice(list(SCP = "TRUE"))
+P_z1_x <- querygrain(gr.bn.white, c("CR", "NP", "S", "A"), "conditional")
+P_z2_x <- querygrain(gr.bn.white, c("NP", "S", "A"), "conditional")
+
 E_y_x1z <- querygrain(gr.bn.black, c("SCP", "NP", "CR", "S", "A"), "conditional") %>%
   ar_slice(list(SCP = "TRUE"))
-P_z_x1 <- querygrain(gr.bn.black, c("NP", "CR", "S", "A"), "joint")
-P_z_x <- querygrain(gr.bn.white, c("NP", "CR", "S", "A"), "joint")
+P_z1_x1 <- querygrain(gr.bn.black, c("CR", "NP", "S", "A"), "conditional")
+P_z2_x1 <- querygrain(gr.bn.black, c("NP", "S", "A"), "conditional")
 
-ADE_x1_x = sum((E_y_xz %a-% E_y_x1z) %a*% P_z_x1)
+P_c <- querygrain(gr.bn, c("S", "A"), "joint")
+
+ADE_x1_x = sum((E_y_xz %a-% E_y_x1z) %a*% P_z1_x1  %a*% P_z2_x1 %a*% P_c)
 ADE_x_x1 = sum((E_y_x1z %a-% E_y_xz) %a*% P_z_x)
 
+#P_z_x1 <- querygrain(gr.bn.black, c("NP", "CR", "S", "A"), "joint")
+#P_z_x <- querygrain(gr.bn.white, c("NP", "CR", "S", "A"), "joint")
 
 ##################
 p_load(mediation)
