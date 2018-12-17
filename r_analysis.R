@@ -41,24 +41,40 @@ calc_stats <- function(cmps) {
   gr.bn.white <- setEvidence(gr.bn, nodes = "R", states = "Caucasian")
   gr.bn.black <- setEvidence(gr.bn, nodes = "R", states = "African-American")
   
-  Ey_white <- querygrain(gr.bn.white, c("SCP", "NP", "CR", "S", "A"), "conditional") %>%
+  #Ey_white <- querygrain(gr.bn.white, c("SCP", "NP", "CR", "S", "A"), "conditional") %>%
+  #  ar_slice(list(SCP = "TRUE"))
+  
+  P1y_white <- querygrain(gr.bn.white, c("SCP", "NP", "CR", "S", "A"), "conditional") %>%
     ar_slice(list(SCP = "TRUE"))
+  P0y_white <- querygrain(gr.bn.white, c("SCP", "NP", "CR", "S", "A"), "conditional") %>%
+    ar_slice(list(SCP = "FALSE"))
   Pz1_white <- querygrain(gr.bn.white, c("CR", "NP", "S", "A"), "conditional")
   Pz2_white <- querygrain(gr.bn.white, c("NP", "S", "A"), "conditional")
   
-  Ey_black <- querygrain(gr.bn.black, c("SCP", "NP", "CR", "S", "A"), "conditional") %>%
+  #Ey_black <- querygrain(gr.bn.black, c("SCP", "NP", "CR", "S", "A"), "conditional") %>%
+  #  ar_slice(list(SCP = "TRUE"))
+  
+  P1y_black <- querygrain(gr.bn.black, c("SCP", "NP", "CR", "S", "A"), "conditional") %>%
     ar_slice(list(SCP = "TRUE"))
+  P0y_black <- querygrain(gr.bn.black, c("SCP", "NP", "CR", "S", "A"), "conditional") %>%
+    ar_slice(list(SCP = "FALSE"))
   Pz1_black <- querygrain(gr.bn.black, c("CR", "NP", "S", "A"), "conditional")
   Pz2_black <- querygrain(gr.bn.black, c("NP", "S", "A"), "conditional")
   
   Pc <- querygrain(gr.bn, c("S", "A"), "joint")
   
-  NDE_black = sum((Ey_white %a-% Ey_black) %a*% Pz1_black  %a*% Pz2_black %a*% Pc)
-  NDE_white = sum((Ey_black %a-% Ey_white) %a*% Pz1_white %a*% Pz2_white %a*% Pc)
+  NDE_black = sum((P1y_white %a-% P1y_black) %a*% Pz1_black  %a*% Pz2_black %a*% Pc)
+  NDE_white = sum((P1y_black %a-% P1y_white) %a*% Pz1_white %a*% Pz2_white %a*% Pc)
   
-  return(tibble(NDE_white, NDE_black))
+  NDE_black_odds = (sum(P1y_white %a*% Pz1_black  %a*% Pz2_black %a*% Pc) / sum(P0y_white %a*% Pz1_black  %a*% Pz2_black %a*% Pc)) /
+    (sum(P1y_black %a*% Pz1_black  %a*% Pz2_black %a*% Pc) / sum(P0y_black %a*% Pz1_black  %a*% Pz2_black %a*% Pc))
+  NDE_white_odds = (sum(P1y_black %a*% Pz1_white  %a*% Pz2_white %a*% Pc) / sum(P0y_black %a*% Pz1_white  %a*% Pz2_white %a*% Pc)) /
+    (sum(P1y_white %a*% Pz1_white  %a*% Pz2_white %a*% Pc) / sum(P0y_white %a*% Pz1_white  %a*% Pz2_white %a*% Pc))
+  
+  return(tibble(NDE_white, NDE_black, NDE_white_odds, NDE_black_odds))
 }
 
+set.seed(2018)
 boots <- bootstraps(cmps, times = 1000)
 
 boots_models <- boots %>%
@@ -71,7 +87,7 @@ sample_estimates <- calc_stats(cmps)
 
 alpha <- .05
 boots_percentiles <- boots_estimates %>%
-  select(NDE_white, NDE_black) %>%
+  select(NDE_white, NDE_black, NDE_white_odds, NDE_black_odds) %>%
   gather() %>% as_tibble() %>%
   group_by(model) %>%
   summarise(low = quantile(statistic, alpha / 2),
@@ -81,12 +97,15 @@ plt.data <- boots_estimates %>%
   gather(key = "effect", value = "estimate", NDE_white, NDE_black) %>%
   as.tibble() %>%
   mutate(sample_s = case_when(model == "NDE_white" ~ sample_estimates$NDE_white,
-                            model == "NDE_black" ~ sample_estimates$NDE_black))
+                            model == "NDE_black" ~ sample_estimates$NDE_black,
+                            model == "NDE_white_odds" ~ sample_estimates$NDE_white_odds,
+                            model == "NDE_black_odds" ~ sample_estimates$NDE_black_odds))
 
 ggplot(plt.data, aes(statistic)) + 
   geom_histogram() + 
   facet_wrap(~ model, scales = "free") +
-  geom_vline(aes(xintercept = sample_s))
+  geom_vline(aes(xintercept = sample_s)) +
+  
 
 ##################
 p_load(mediation)
